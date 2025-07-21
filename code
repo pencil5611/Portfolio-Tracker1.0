@@ -1,0 +1,124 @@
+import yfinance as yf
+import time
+import schedule
+import sys
+from datetime import datetime
+import smtplib
+from email.message import EmailMessage
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+while True:
+    try:
+        print('Enter Ticker Symbols. Please enter the ticker symbols spaced apart without commas. Input exit to exit.')
+        tickers_input = input('>')
+        is_exit = tickers_input.lower()
+        tickers_input_list = tickers_input.upper().split()
+        if is_exit == 'exit':
+            print('Exiting')
+            sys.exit()
+
+        tickers_real = yf.Tickers(tickers_input_list)
+
+        valid = True
+        for stocks in tickers_input_list:
+            try:
+                price = tickers_real.tickers[stocks].info.get('regularMarketPrice')
+                if price is None:
+                    valid = False
+                    break
+            except KeyError:
+                valid = False
+                break
+        if valid:
+            break
+        else:
+            print('Invalid Ticker(s). Please try again.')
+    except KeyboardInterrupt:
+        print('Exiting')
+        sys.exit()
+
+
+shares_owned = {}
+for ticker in tickers_input_list:
+    while True:
+        try:
+            share_count = float(input('How many shares of each stock? >'))
+            shares_owned[ticker] = share_count
+            break
+        except ValueError:
+            print('Please enter a number.')
+
+while True:
+    cash = input('How much cash? >')
+    try:
+        cash = float(cash)
+        break
+    except ValueError:
+        print('Please enter a number.')
+
+while True:
+    use_interest = input('Do you want to use interest? Y/N? >')
+    if use_interest.upper == 'Y':
+        try:
+            interest_rate = float(input('Enter the annual interest rate. >'))
+            break
+        except ValueError:
+            print('Please enter a number.')
+    else:
+        interest_rate = 0.0
+        break
+
+EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS")
+PASSWORD = os.getenv("PASSWORD")
+RECIPIENT = input('Enter your email address >')
+
+def send_email(body):
+    msg = EmailMessage()
+    msg['subject'] = 'Daily Portfolio Report'
+    msg['from'] = EMAIL_ADDRESS
+    msg['to'] = RECIPIENT
+    msg.set_content(body)
+
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+            smtp.login(EMAIL_ADDRESS, PASSWORD)
+            smtp.send_message(msg)
+            print('Email sent')
+    except Exception as error:
+        print(error)
+
+
+
+def check_prices():
+    global cash
+    if interest_rate > 0:
+        daily_rate = interest_rate / 100 / 365
+        cash *= (1 + daily_rate)
+        cash = round(cash, 2)
+    totals = []
+    report_str = ""
+    for stock, shares in shares_owned.items():
+        price_in_function = tickers_real.tickers[stock].info.get('regularMarketPrice')
+        total_value = round(shares * price_in_function, 2)
+        now = datetime.now()
+        totals.append(total_value)
+        report_str += f"Price of {stock} is ${price_in_function:.2f} per share for total ${total_value:.2f} at {now}\n"
+    portfolio_value = round(sum(totals), 2) + round(float(cash), 2)
+    report_str += f"\nCash: ${cash:.2f}\nTotal Portfolio Value: ${portfolio_value:.2f}\n"
+    print(report_str)
+    send_email(report_str)
+
+
+check_prices()
+schedule.every().day.at("16:00").do(check_prices)
+
+try:
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
+except KeyboardInterrupt:
+    print('Exiting')
+    sys.exit()
