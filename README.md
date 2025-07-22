@@ -1,4 +1,4 @@
-# Portfolio-Tracker1.0
+# Portfolio-Tracker
 Portfolio Tracker that keeps track of stocks, shares, cash, and total portfolio value with daily reports through email.
 
 
