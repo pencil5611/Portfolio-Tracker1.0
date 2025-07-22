@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import yfinance as yf
 import time
 import schedule
@@ -7,8 +8,14 @@ import smtplib
 from email.message import EmailMessage
 import os
 from dotenv import load_dotenv
+import csv
+from collections import defaultdict
 
 load_dotenv()
+
+PORTFOLIO_HISTORY= "portfolioHistory.csv"
+STOCK_HISTORY = "stockHistory.csv"
+
 
 while True:
     try:
@@ -75,12 +82,19 @@ EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS")
 PASSWORD = os.getenv("PASSWORD")
 RECIPIENT = input('Enter your email address >')
 
-def send_email(body):
+def send_email(body, attachment_path=None):
+    global msg
     msg = EmailMessage()
     msg['subject'] = 'Daily Portfolio Report'
     msg['from'] = EMAIL_ADDRESS
     msg['to'] = RECIPIENT
     msg.set_content(body)
+
+    if attachment_path:
+        with open(attachment_path, 'rb') as file:
+            file_data = file.read()
+            file_name = os.path.basename(attachment_path)
+        msg.add_attachment(file_data, maintype='image', subtype='png', filename=file_name)
 
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
@@ -93,11 +107,12 @@ def send_email(body):
 
 
 def check_prices():
-    global cash
+    global cash, email_portdiff, rounded_diff_port, diff_port_percent, email_portdiffweek, now
     if interest_rate > 0:
         daily_rate = interest_rate / 100 / 365
         cash *= (1 + daily_rate)
         cash = round(cash, 2)
+
     totals = []
     report_str = ""
     for stock, shares in shares_owned.items():
@@ -107,14 +122,119 @@ def check_prices():
         totals.append(total_value)
         report_str += f"Price of {stock} is ${price_in_function:.2f} per share for total ${total_value:.2f} at {now}\n"
     portfolio_value = round(sum(totals), 2) + round(float(cash), 2)
-    report_str += f"\nCash: ${cash:.2f}\nTotal Portfolio Value: ${portfolio_value:.2f}\n"
+    report_str += f"Cash: ${cash:.2f}\nTotal Portfolio Value: ${portfolio_value:.2f}\n"
+
+    if not os.path.exists(PORTFOLIO_HISTORY):
+        with open(PORTFOLIO_HISTORY, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow([
+                ["Date", "Cash", "Portfolio Value"] +
+                [f"{ticker}_Price" for ticker in shares_owned]
+            ])
+    with open(PORTFOLIO_HISTORY, mode="a", newline="") as file:
+        writer = csv.writer(file)
+        row = [
+                  now.isoformat(),
+                  round(cash, 2),
+                  round(portfolio_value, 2)
+              ] + [
+                  round(tickers_real.tickers[ticker].info.get('regularMarketPrice'), 2)
+                  for ticker in shares_owned
+              ]
+        writer.writerow(row)
+
+    with open(STOCK_HISTORY, mode="a", newline="") as file:
+        writer = csv.writer(file)
+        for ticker, shares in shares_owned.items():
+            price = tickers_real.tickers[ticker].info.get('regularMarketPrice')
+            total_value = round(price * shares, 2)
+            writer.writerow([now.isoformat(), ticker, shares, round(price, 2), total_value])
+
+    data_by_name = defaultdict(list)
+    with open(STOCK_HISTORY, mode="r") as file:
+        reader = csv.reader(file)
+        next(reader)
+        for row in reader:
+            ticker_identity = row[1]
+            value = float(row[3])
+            data_by_name[ticker_identity].append(value)
+
+    data_for_portfolio = []
+
+    with open(PORTFOLIO_HISTORY, mode="r") as file:
+        reader = csv.reader(file)
+        next(reader)
+        for column in reader:
+            value = float(column[2])
+            data_for_portfolio.append(value)
+
+    if len(data_for_portfolio) >= 7:
+        week_values_port = data_for_portfolio[-7:]
+        diff_week_port = week_values_port[-1] - week_values_port[0]
+        rounded_week_port = round(diff_week_port, 2)
+        port_week_perc = round((diff_week_port / week_values_port[0]) * 100, 2)
+        email_portdiffweek = f"The change in your Portfolio's Value this past week is ${rounded_week_port:.2f} or {port_week_perc}%.\n"
+    else:
+        email_portdiffweek = ""
+
+    email_diff_week = ""
+    for ticker_identity, values in data_by_name.items():
+        if len(values) >= 7:
+            recent_values = values[-7:]
+            diff_week = round(recent_values[-1] - recent_values[0], 2)
+            percent_diff_week = round(diff_week / recent_values[0] * 100, 2)
+            email_diff_week += f"The change in {ticker_identity} is ${diff_week:.2f} or {percent_diff_week}%\n"
+
+
+    email_diff = ""
+    for ticker_identity, values in data_by_name.items():
+        if len(values) >= 2:
+            recent_values = values[-2:]
+            diff = float(recent_values[1]) - float(recent_values[0])
+            percent_diff = round(diff / float(recent_values[0]) * 100, 2)
+            rounded_diff = round(diff, 2)
+            email_diff += f"The change in {ticker_identity} is ${rounded_diff:.2f} or {percent_diff}% per share since last market close.\n"
+            print(f"The change in {ticker_identity} is ${rounded_diff:.2f} or {percent_diff}% per share since last market close.")
+
+    if len(data_for_portfolio) >= 2:
+        recent_values_port = data_for_portfolio[-2:]
+        diff_port = recent_values_port[1] - recent_values_port[0]
+        rounded_diff_port = round(diff_port, 2)
+        port_perc = round((diff_port / recent_values_port[0]) * 100, 2)
+        email_portdiff = f"The change in your Portfolio's Value is ${rounded_diff_port:.2f} or {port_perc}% since last market close.\n"
+        print(email_portdiff)
     print(report_str)
-    send_email(report_str)
+
+    x_data = []
+    y_data = []
+    with open(PORTFOLIO_HISTORY, mode="r") as file:
+        reader = csv.reader(file)
+        next(reader)
+        for row in reader:
+            x_data.append(datetime.fromisoformat(row[0]))
+            y_data.append(float(row[2]))
+    plt.plot(x_data, y_data)
+    plt.xlabel("Date")
+    plt.ylabel("Portfolio Value")
+    plt.title("Portfolio Value Over Time")
+    plt.tight_layout()
+    plot_path = "portfolioplot.png"
+    plt.savefig(plot_path)
+    plt.close()
 
 
-check_prices()
+    email_body = (report_str + "\n" + email_diff + "\n" + email_portdiff)
+    email_body_week = (report_str + "\n" + email_diff + "\n" + email_portdiff + "\n" + email_diff_week + "\n" + email_portdiff)
+
+    if now.weekday() == 4 and now.hour == 16:
+        send_email(email_body_week, "portfolioplot.png")
+    else:
+        send_email(email_body, "portfolioplot.png")
+
+
+
 schedule.every().day.at("16:00").do(check_prices)
-
+check_prices()
 try:
     while True:
         schedule.run_pending()
