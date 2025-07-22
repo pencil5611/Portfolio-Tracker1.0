@@ -83,7 +83,6 @@ PASSWORD = os.getenv("PASSWORD")
 RECIPIENT = input('Enter your email address >')
 
 def send_email(body, attachment_path=None):
-    global msg
     msg = EmailMessage()
     msg['subject'] = 'Daily Portfolio Report'
     msg['from'] = EMAIL_ADDRESS
