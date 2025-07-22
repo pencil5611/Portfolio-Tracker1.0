@@ -11,6 +11,10 @@ Portfolio Tracker that keeps track of stocks, shares, cash, and total portfolio 
   
 - Scheduled daily updates at market close
 
+- Scheduled weekly updates every Friday at market close
+
+- Portfolio graph that shows growth over time
+
 ## How to Use - 
 - When running, input ticker symbols separated by a single space (no commas)
   
@@ -25,13 +29,11 @@ Portfolio Tracker that keeps track of stocks, shares, cash, and total portfolio 
 ## Important Notes - 
 - Users must create their own .env file with bot email credentials to recieve email reports
   
-- the script uses yfinance, schedule, etc so users must install the libraries 
+- the script uses yfinance, schedule, etc so users must install with pip if needed
 
 ## Future Improvements - 
-- Storage of past prices to show profits/loss
-  
-- weekly reports
-  
-- graph of portfolio over time
-  
-- graph of invidivual stocks over time
+- Graph of individual Stocks over Time
+
+- Interest on Cash in Portfolio
+
+- TBD
