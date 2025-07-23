@@ -83,6 +83,7 @@ PASSWORD = os.getenv("PASSWORD")
 RECIPIENT = input('Enter your email address >')
 
 def send_email(body, attachment_path=None):
+    global msg
     msg = EmailMessage()
     msg['subject'] = 'Daily Portfolio Report'
     msg['from'] = EMAIL_ADDRESS
@@ -115,7 +116,8 @@ def check_prices():
     totals = []
     report_str = ""
     for stock, shares in shares_owned.items():
-        price_in_function = tickers_real.tickers[stock].info.get('regularMarketPrice')
+        ticker_obj = yf.Ticker(stock)
+        price_in_function = ticker_obj.info.get('regularMarketPrice')
         total_value = round(shares * price_in_function, 2)
         now = datetime.now()
         totals.append(total_value)
@@ -231,9 +233,9 @@ def check_prices():
         send_email(email_body, "portfolioplot.png")
 
 
-
-schedule.every().day.at("16:00").do(check_prices)
 check_prices()
+schedule.every().day.at("16:00").do(check_prices)
+
 try:
     while True:
         schedule.run_pending()
